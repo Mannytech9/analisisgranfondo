@@ -47,17 +47,14 @@ st.header("📁 Carga de archivos")
 st.info("""
 **Instrucciones:**
 1. **Archivo .FIT** (obligatorio) - Datos de tu ciclocomputador
-2. **Imagen de resultados** (opcional) - Foto del ranking oficial
 """)
 
 col1, col2 = st.columns(2)
 with col1:
-    uploaded_image = st.file_uploader("Imagen de resultados", type=["png", "jpg", "jpeg"])
 with col2:
     fit_file = st.file_uploader("Archivo .FIT", type=["fit"])
 
 # =============================================================================
-# OCR MEJORADO - FUNCIONES CORREGIDAS
 # =============================================================================
 
 def normalize_image(img: Image.Image, target_h=2000):
@@ -69,7 +66,6 @@ def normalize_image(img: Image.Image, target_h=2000):
     return img
 
 def preprocess_for_ocr(bgr):
-    """Preprocesamiento robusto para OCR"""
     gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
     
     # CLAHE para contraste
@@ -89,7 +85,6 @@ def preprocess_for_ocr(bgr):
     return thr
 
 def extract_ocr_mejorado(full_img):
-    """Extracción OCR completa y mejorada"""
     try:
         # Normalizar imagen
         img_norm = normalize_image(full_img, target_h=2200)
@@ -109,17 +104,13 @@ def extract_ocr_mejorado(full_img):
         sbin = preprocess_for_ocr(sports)
         tbin = preprocess_for_ocr(splits)
         
-        # OCR
         
         # Parsear datos básicos
         
-        return resultado, (hbin, sbin, tbin)
         
     except Exception as e:
-        st.error(f"Error en OCR: {str(e)}")
         return {}, (None, None, None)
 
-    """Parser simplificado para datos OCR"""
     # Expresiones regulares
     rx_time_hms = re.compile(r"\b(\d{1,2}:\d{2}:\d{2})\b")
     rx_time_ms = re.compile(r"\b(\d{1,2}:\d{2})\b")
@@ -127,7 +118,6 @@ def extract_ocr_mejorado(full_img):
     rx_speed = re.compile(r"(\d{1,2}[.,]\d{1,2})\s*km/h", re.IGNORECASE)
     rx_hora = re.compile(r"\b(\d{1,2}:\d{2})\b")
     
-    resultado = {
         "posicion": None,
         "tiempo_total": None,
         "ritmo_promedio": None,
@@ -137,7 +127,6 @@ def extract_ocr_mejorado(full_img):
     
     # Buscar posición
     if m:
-        resultado["posicion"] = m.group(1)
     
     # Buscar tiempo total (el HH:MM:SS más largo)
     if tiempos:
@@ -150,27 +139,22 @@ def extract_ocr_mejorado(full_img):
             if total_seconds > max_seconds:
                 max_seconds = total_seconds
                 best_time = tiempo
-        resultado["tiempo_total"] = best_time
     
     # Buscar ritmo
     if m:
-        resultado["ritmo_promedio"] = m.group(1).replace(',', '.')
     
     # Buscar hora de inicio (primer HH:MM que parece hora razonable)
     for hora in horas:
         h, m = map(int, hora.split(':'))
         if 6 <= h <= 12:  # Horas razonables para una carrera
-            resultado["hora_inicio_real"] = hora + ":00"
             break
     
     # Extraer splits simples
         try:
             splits_times = rx_time_hms.findall(splits_text)
-            resultado["splits"] = splits_times[:10]  # Máximo 10 splits
         except:
             pass
     
-    return resultado
 
 # =============================================================================
 # PROCESAMIENTO FIT MEJORADO
@@ -357,7 +341,6 @@ def summarize_segments(df, weight_kg):
 # INTERFAZ PRINCIPAL
 # =============================================================================
 
-# Procesar imagen OCR
 datos_ocr = {}
 if uploaded_image:
     try:
@@ -367,7 +350,6 @@ if uploaded_image:
         show.thumbnail((700, 700))
         st.image(show, caption="Resultados oficiales", use_container_width=False)
 
-        with st.spinner("Procesando imagen (OCR Inteligente)…"):
             datos_ocr, (hbin, sbin, tbin) = extract_ocr_mejorado(im)
 
         if datos_ocr:
@@ -402,7 +384,6 @@ if uploaded_image:
                         st.write(f"**{sp}**")
 
     except Exception as e:
-        st.error(f"❌ Error en OCR: {e}")
 
 # Procesar archivo FIT
 if fit_file:
@@ -568,7 +549,6 @@ st.markdown("### 💡 Acerca del Análisis")
 st.info("""
 - **Segmentación Automática**: Los segmentos se detectan automáticamente basándose en cambios de pendiente (>3%) y desnivel (>25m)
 - **Métricas Clave**: NP (Potencia Normalizada), IF (Factor de Intensidad), TSS (Training Stress Score)
-- **Datos Oficiales**: La información del OCR se usa para comparar con los datos del ciclocomputador
 """)
 
 
