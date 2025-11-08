@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 import matplotlib.pyplot as plt
+import easyocr
 
 from PIL import Image, ImageOps
 from fitparse import FitFile
@@ -57,75 +58,107 @@ with col2:
     fit_file = st.file_uploader("Archivo .FIT", type=["fit"])
 
 # =============================================================================
-# FUNCIONES DE PROCESAMIENTO DE IMAGEN (SIMULACIÓN OCR)
+# FUNCIONES DE PROCESAMIENTO DE IMAGEN (OCR MEJORADO)
 # =============================================================================
 
-def normalize_image(img: Image.Image, target_h=2000):
-    """Reescala manteniendo proporción"""
-    w, h = img.size
-    scale = target_h / h
-    new_w = int(w * scale)
-    img = img.resize((new_w, target_h), Image.LANCZOS)
-    return img
-
-def preprocess_for_ocr(bgr):
-    """Preprocesamiento básico de imagen"""
-    gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
-    
-    # CLAHE para contraste
-    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
-    gray = clahe.apply(gray)
-    
-    # Desenfoque suave + unsharp masking
-    blur = cv2.GaussianBlur(gray, (0, 0), 3)
-    sharp = cv2.addWeighted(gray, 1.5, blur, -0.5, 0)
-    
-    # Umbral adaptativo
-    thr = cv2.adaptiveThreshold(
-        sharp, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY, 41, 15
-    )
-    
-    return thr
-
 def extract_ocr_mejorado(full_img):
-    """
-    Función OCR simulada para Streamlit Cloud
-    En una implementación real, usarías un servicio de OCR por API
-    """
     try:
-        # Normalizar imagen
-        img_norm = normalize_image(full_img, target_h=2200)
-        bgr = cv2.cvtColor(np.array(img_norm), cv2.COLOR_RGB2BGR)
+        # Inicializar EasyOCR (solo una vez para mejor rendimiento)
+        if 'reader' not in st.session_state:
+            st.session_state.reader = easyocr.Reader(['en', 'es'])  # Inglés y español
         
-        # Preprocesar imagen completa
-        full_bin = preprocess_for_ocr(bgr)
-        H, W = full_bin.shape
+        # Convertir PIL Image a numpy array
+        img_array = np.array(full_img)
         
-        # Dividir en secciones
-        header = bgr[0:int(H*0.3), :]
-        sports = bgr[int(H*0.3):int(H*0.6), :]
-        splits = bgr[int(H*0.6):H, :]
+        # Ejecutar OCR
+        results = st.session_state.reader.readtext(img_array, detail=0, paragraph=True)
+        texto_completo = " ".join(results)
         
-        # Preprocesar cada sección
-        hbin = preprocess_for_ocr(header)
-        sbin = preprocess_for_ocr(sports)
-        tbin = preprocess_for_ocr(splits)
+        # Procesar texto con expresiones regulares mejoradas
+        datos_extraidos = parse_ocr_text(texto_completo)
         
-        # Simular datos extraídos (en producción usarías Tesseract o API)
-        datos_simulados = {
-            "posicion": "45",
-            "tiempo_total": "02:15:30",
-            "ritmo_promedio": "35.2",
-            "hora_inicio_real": "08:30:00",
-            "splits": ["00:32:15", "01:05:45", "01:38:20", "02:15:30"]
-        }
+        # Generar imágenes de ejemplo para visualización
+        hbin, sbin, tbin = generate_debug_images(img_array)
         
-        return datos_simulados, (hbin, sbin, tbin)
+        return datos_extraidos, (hbin, sbin, tbin)
         
     except Exception as e:
-        st.error(f"Error en procesamiento de imagen: {str(e)}")
+        st.error(f"Error en OCR: {str(e)}")
         return {}, (None, None, None)
+
+def parse_ocr_text(texto):
+    """Parse mejorado del texto OCR"""
+    # Limpiar texto
+    texto_limpio = re.sub(r'\s+', ' ', texto)
+    
+    datos = {
+        "posicion": None,
+        "tiempo_total": None,
+        "ritmo_promedio": None,
+        "hora_inicio_real": None,
+        "splits": [],
+        "texto_extraido": texto_limpio[:500] + "..." if len(texto_limpio) > 500 else texto_limpio
+    }
+    
+    # Buscar posición (ej: "45°", "1st", "23º")
+    patron_posicion = r'(\d{1,3})[°ºª]|\b(\d{1,3})(?:st|nd|rd|th)\b'
+    match_pos = re.search(patron_posicion, texto_limpio, re.IGNORECASE)
+    if match_pos:
+        datos["posicion"] = match_pos.group(1) or match_pos.group(2)
+    
+    # Buscar tiempo total (HH:MM:SS o H:MM:SS)
+    patron_tiempo = r'\b(\d{1,2}):(\d{2}):(\d{2})\b'
+    matches_tiempo = re.findall(patron_tiempo, texto_limpio)
+    if matches_tiempo:
+        # Tomar el tiempo más largo como tiempo total
+        tiempos_segundos = []
+        for h, m, s in matches_tiempo:
+            segundos = int(h)*3600 + int(m)*60 + int(s)
+            tiempos_segundos.append((f"{h}:{m}:{s}", segundos))
+        
+        if tiempos_segundos:
+            tiempo_total = max(tiempos_segundos, key=lambda x: x[1])
+            datos["tiempo_total"] = tiempo_total[0]
+            
+            # Los otros tiempos como splits
+            otros_tiempos = [t[0] for t in tiempos_segundos if t[0] != tiempo_total[0]]
+            datos["splits"] = otros_tiempos[:6]  # Máximo 6 splits
+    
+    # Buscar velocidad promedio (km/h)
+    patron_velocidad = r'(\d{1,2}[,.]\d{1,2})\s*km/h|\b(\d{1,2})[,.](\d{1,2})\s*km/h'
+    match_vel = re.search(patron_velocidad, texto_limpio, re.IGNORECASE)
+    if match_vel:
+        if match_vel.group(1):
+            datos["ritmo_promedio"] = match_vel.group(1).replace(',', '.')
+        elif match_vel.group(2) and match_vel.group(3):
+            datos["ritmo_promedio"] = f"{match_vel.group(2)}.{match_vel.group(3)}"
+    
+    # Buscar hora de inicio
+    patron_hora = r'\b(\d{1,2}):(\d{2}):(\d{2})\b'
+    matches_hora = re.findall(patron_hora, texto_limpio)
+    for h, m, s in matches_hora:
+        hora_int = int(h)
+        if 5 <= hora_int <= 12:  # Horas razonables para carrera
+            datos["hora_inicio_real"] = f"{h}:{m}:{s}"
+            break
+    
+    return datos
+
+def generate_debug_images(img_array):
+    """Generar imágenes para debug (simuladas)"""
+    try:
+        # Convertir a escala de grises para simular procesamiento
+        gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
+        h, w = gray.shape
+        
+        # Dividir en secciones (header, sports, splits)
+        header = gray[0:int(h*0.3), :]
+        sports = gray[int(h*0.3):int(h*0.6), :]
+        splits = gray[int(h*0.6):h, :]
+        
+        return header, sports, splits
+    except:
+        return None, None, None
 
 # =============================================================================
 # PROCESAMIENTO FIT MEJORADO
