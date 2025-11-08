@@ -112,7 +112,6 @@ def extract_ocr_mejorado(full_img):
         # OCR
         
         # Parsear datos básicos
-        resultado = parse_basic_ocr_data(header_txt, sports_txt, splits_df)
         
         return resultado, (hbin, sbin, tbin)
         
@@ -120,7 +119,6 @@ def extract_ocr_mejorado(full_img):
         st.error(f"Error en OCR: {str(e)}")
         return {}, (None, None, None)
 
-def parse_basic_ocr_data(header_txt, sports_txt, splits_df):
     """Parser simplificado para datos OCR"""
     # Expresiones regulares
     rx_time_hms = re.compile(r"\b(\d{1,2}:\d{2}:\d{2})\b")
@@ -138,12 +136,10 @@ def parse_basic_ocr_data(header_txt, sports_txt, splits_df):
     }
     
     # Buscar posición
-    m = rx_place.search(header_txt)
     if m:
         resultado["posicion"] = m.group(1)
     
     # Buscar tiempo total (el HH:MM:SS más largo)
-    tiempos = rx_time_hms.findall(header_txt)
     if tiempos:
         # Encontrar el tiempo más largo
         max_seconds = 0
@@ -157,12 +153,10 @@ def parse_basic_ocr_data(header_txt, sports_txt, splits_df):
         resultado["tiempo_total"] = best_time
     
     # Buscar ritmo
-    m = rx_speed.search(header_txt)
     if m:
         resultado["ritmo_promedio"] = m.group(1).replace(',', '.')
     
     # Buscar hora de inicio (primer HH:MM que parece hora razonable)
-    horas = rx_hora.findall(header_txt)
     for hora in horas:
         h, m = map(int, hora.split(':'))
         if 6 <= h <= 12:  # Horas razonables para una carrera
@@ -170,10 +164,7 @@ def parse_basic_ocr_data(header_txt, sports_txt, splits_df):
             break
     
     # Extraer splits simples
-    if splits_df is not None:
         try:
-            splits_df = splits_df.dropna(subset=["text"])
-            splits_text = " ".join(splits_df["text"].astype(str).tolist())
             splits_times = rx_time_hms.findall(splits_text)
             resultado["splits"] = splits_times[:10]  # Máximo 10 splits
         except:
