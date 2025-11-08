@@ -7,7 +7,6 @@ import re
 import cv2
 import numpy as np
 import pandas as pd
-import pytesseract
 import streamlit as st
 import matplotlib.pyplot as plt
 
@@ -111,9 +110,6 @@ def extract_ocr_mejorado(full_img):
         tbin = preprocess_for_ocr(splits)
         
         # OCR
-        header_txt = pytesseract.image_to_string(hbin, lang="eng+spa", config="--oem 3 --psm 6")
-        sports_txt = pytesseract.image_to_string(sbin, lang="eng+spa", config="--oem 3 --psm 6")
-        splits_df = pytesseract.image_to_data(tbin, lang="eng+spa", config="--oem 3 --psm 6", output_type=pytesseract.Output.DATAFRAME)
         
         # Parsear datos básicos
         resultado = parse_basic_ocr_data(header_txt, sports_txt, splits_df)
